@@ -49,16 +49,6 @@ public sealed class DeviceInfo
     public DeviceInfo Clone() => (DeviceInfo)MemberwiseClone();
 }
 
-public sealed class KeysetBody
-{
-    public long Rev { get; set; }
-    public List<DeviceInfo> Devices { get; set; } = new();
-
-    /// <summary>Devices removed by any branch. Omitted when empty so old signatures stay valid.</summary>
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public List<string>? Removed { get; set; }
-}
-
 public sealed class Keyset
 {
     public long Rev { get; set; }
@@ -71,17 +61,42 @@ public sealed class Keyset
 
     public DeviceInfo? Find(string id) => Devices.FirstOrDefault(d => d.Id == id);
 
+    /// <summary>
+    /// Canonical signed bytes. Keep the field order, escaping and base64 stable: existing keys.bin
+    /// signatures depend on these exact bytes.
+    /// </summary>
     public byte[] BodyBytes()
     {
-        var body = new KeysetBody
+        using var buffer = new MemoryStream();
+        using (var writer = new Utf8JsonWriter(buffer, new JsonWriterOptions { Indented = false }))
         {
-            Rev = Rev,
-            Devices = Devices.OrderBy(d => d.Id, StringComparer.Ordinal).ToList(),
-            Removed = Removed is { Count: > 0 }
-                ? Removed.Distinct(StringComparer.Ordinal).OrderBy(id => id, StringComparer.Ordinal).ToList()
-                : null,
-        };
-        return JsonSerializer.SerializeToUtf8Bytes(body, Json.Options);
+            writer.WriteStartObject();
+            writer.WriteNumber("Rev", Rev);
+            writer.WriteStartArray("Devices");
+            foreach (var device in Devices.OrderBy(d => d.Id, StringComparer.Ordinal))
+            {
+                writer.WriteStartObject();
+                writer.WriteString("Id", device.Id);
+                writer.WriteString("Label", device.Label);
+                writer.WriteBase64String("PubKey", device.PubKey);
+                writer.WriteBase64String("Wrap", device.Wrap);
+                writer.WriteEndObject();
+            }
+            writer.WriteEndArray();
+
+            if (Removed is { Count: > 0 })
+            {
+                writer.WriteStartArray("Removed");
+                foreach (var id in Removed.Distinct(StringComparer.Ordinal)
+                             .OrderBy(id => id, StringComparer.Ordinal))
+                    writer.WriteStringValue(id);
+                writer.WriteEndArray();
+            }
+
+            writer.WriteEndObject();
+        }
+
+        return buffer.ToArray();
     }
 
     public void SignWith(DeviceKey key)
@@ -128,10 +143,10 @@ public sealed class Keyset
     }
 
     public void Save(string path) =>
-        Files.WriteAtomic(path, JsonSerializer.SerializeToUtf8Bytes(this, Json.Options), secret: true);
+        Files.WriteAtomic(path, JsonSerializer.SerializeToUtf8Bytes(this, PmJsonContext.Default.Keyset), secret: true);
 
     public static Keyset Load(string path) =>
-        JsonSerializer.Deserialize<Keyset>(File.ReadAllBytes(path), Json.Options)
+        JsonSerializer.Deserialize<Keyset>(File.ReadAllBytes(path), PmJsonContext.Default.Keyset)
         ?? throw new InvalidDataException("keys.bin пуст или повреждён");
 }
 
@@ -154,9 +169,9 @@ public sealed class Config
     public List<Peer> Peers { get; set; } = new();
 
     public void Save(string path) =>
-        Files.WriteAtomic(path, JsonSerializer.SerializeToUtf8Bytes(this, Json.Options), secret: true);
+        Files.WriteAtomic(path, JsonSerializer.SerializeToUtf8Bytes(this, PmJsonContext.Default.Config), secret: true);
 
     public static Config Load(string path) =>
-        JsonSerializer.Deserialize<Config>(File.ReadAllBytes(path), Json.Options)
+        JsonSerializer.Deserialize<Config>(File.ReadAllBytes(path), PmJsonContext.Default.Config)
         ?? throw new InvalidDataException("config.json пуст или повреждён");
 }

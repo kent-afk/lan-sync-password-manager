@@ -26,6 +26,24 @@ public static class Merger
                 continue;
             }
 
+            // Deletion is authoritative: a tombstone wins over a live edit, even a higher version.
+            // Two tombstones are reconciled deterministically. A conflict copy of a live edit would
+            // reintroduce the secret the delete removed.
+            if (current.Deleted || incoming.Deleted)
+            {
+                var tombstone = current.Deleted && incoming.Deleted
+                    ? current.Version != incoming.Version
+                        ? (current.Version > incoming.Version ? current : incoming)
+                        : (string.CompareOrdinal(current.Device, incoming.Device) <= 0 ? current : incoming)
+                    : (current.Deleted ? current : incoming);
+                if (!ReferenceEquals(byId[incoming.Id], tombstone))
+                {
+                    byId[incoming.Id] = tombstone;
+                    changed = true;
+                }
+                continue;
+            }
+
             if (current.Version > incoming.Version)
             {
                 // current is causally later; incoming is a stale edit

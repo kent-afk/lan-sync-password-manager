@@ -74,7 +74,7 @@ public sealed partial class MainView
                     }
 
                     offerStatus.Text = _s.PairWaitingConfirm;
-                    var accepted = await ConfirmFingerprintsAsync(pending.OwnFingerprint, pending.Fingerprint);
+                    var accepted = await ConfirmFingerprintsAsync(pending.OwnFingerprint, pending.Fingerprint, pending.WasRemoved);
                     offer.Approve(accepted);
                     if (!accepted)
                     {
@@ -218,7 +218,7 @@ public sealed partial class MainView
     /// The pairing code proves only that someone typed the code. Both users must compare the keys
     /// before the joiner's vault is sent to the other device.
     /// </summary>
-    private Task<bool> ConfirmFingerprintsAsync(string own, string peer)
+    private Task<bool> ConfirmFingerprintsAsync(string own, string peer, bool wasRemoved = false)
     {
         var tcs = new TaskCompletionSource<bool>();
         Grid? modal = null;
@@ -273,6 +273,16 @@ public sealed partial class MainView
         };
 
         modal = AddModal(Ui.Card(panel, 460));
+        if (wasRemoved)
+        {
+            panel.Children.Insert(2, new TextBlock
+            {
+                Text = _s.PairRemovedWarning,
+                FontSize = 12,
+                Foreground = Ui.Danger,
+                TextWrapping = TextWrapping.Wrap,
+            });
+        }
         return tcs.Task;
     }
 

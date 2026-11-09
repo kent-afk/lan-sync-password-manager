@@ -9,7 +9,7 @@ public static class VaultFile
 
     public static byte[] Seal(Vault.Vault vault, byte[] vaultKey)
     {
-        var json = JsonSerializer.SerializeToUtf8Bytes(vault, Json.Options);
+        var json = JsonSerializer.SerializeToUtf8Bytes(vault, PmJsonContext.Default.Vault);
         var (nonce, sealedBytes) = Crypto.Crypto.Seal(vaultKey, json);
         return Magic.Concat(nonce).Concat(sealedBytes).ToArray();
     }
@@ -23,7 +23,7 @@ public static class VaultFile
         var nonce = data[Magic.Length..(Magic.Length + Crypto.Crypto.NonceSize)];
         var sealedBytes = data[(Magic.Length + Crypto.Crypto.NonceSize)..];
         var json = Crypto.Crypto.Open(vaultKey, nonce, sealedBytes);
-        var vault = JsonSerializer.Deserialize<Vault.Vault>(json, Json.Options)
+        var vault = JsonSerializer.Deserialize<Vault.Vault>(json, PmJsonContext.Default.Vault)
                     ?? throw new InvalidDataException("store.bin пуст");
 
         // Tombstones from older builds may still carry the secret fields. Scrub on every open.

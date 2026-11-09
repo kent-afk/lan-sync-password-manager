@@ -349,7 +349,7 @@ public sealed partial class MainView
             var value = passphrase.Text ?? "";
             var repeat = confirm.Text ?? "";
 
-            if (value.Length is < 4 or > 30)
+            if (value.Length is < 12 or > 30)
             {
                 error.Text = _s.PassphraseTooShort;
                 error.IsVisible = true;

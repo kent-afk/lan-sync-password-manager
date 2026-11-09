@@ -103,6 +103,21 @@ public sealed class LanServer : IAsyncDisposable
                     Json.Options, statusCode: StatusCodes.Status403Forbidden);
             }
 
+            // Reject an identity that cannot be paired before asking the user to confirm a fingerprint.
+            session.ReloadKeyset();
+            if (request.DeviceId == session.Config.DeviceId)
+                return Results.Json(new PairResponse { Format = Protocol.Format, Ok = false, Error = "нельзя сопрячь собственное устройство" },
+                    Json.Options, statusCode: StatusCodes.Status409Conflict);
+            var existing = session.Keyset.Find(request.DeviceId);
+            if (existing is not null && !existing.PubKey.AsSpan().SequenceEqual(request.PubKey))
+                return Results.Json(new PairResponse
+                {
+                    Format = Protocol.Format,
+                    Ok = false,
+                    Error = "устройство с этим идентификатором уже сопряжено с другим ключом",
+                }, Json.Options, statusCode: StatusCodes.Status409Conflict);
+            var wasRemoved = session.Keyset.Removed?.Contains(request.DeviceId) == true;
+
             if (!active.TryBegin())
                 return Results.Json(new PairResponse { Format = Protocol.Format, Ok = false, Error = "код уже используется" },
                     Json.Options, statusCode: StatusCodes.Status403Forbidden);
@@ -110,7 +125,7 @@ public sealed class LanServer : IAsyncDisposable
             // Unlike the code, the fingerprint check needs the local user. The vault key is not wrapped
             // and the store is not sent until both users have seen and confirmed the fingerprints.
             active.Pending.TrySetResult(new PairPending(request.DeviceId, request.Label,
-                Crypto.Fingerprint(request.PubKey), session.OwnFingerprint));
+                Crypto.Fingerprint(request.PubKey), session.OwnFingerprint, wasRemoved));
 
             bool approved;
             try
@@ -137,7 +152,7 @@ public sealed class LanServer : IAsyncDisposable
                 lock (session.Gate)
                 {
                     session.ReloadStore();
-                    session.AddDevice(request.DeviceId, request.Label, request.PubKey);
+                    var added = session.AddDevice(request.DeviceId, request.Label, request.PubKey);
 
                     var remote = ctx.Connection.RemoteIpAddress?.ToString() ?? "";
                     session.Config.Peers.RemoveAll(p => p.Id == request.DeviceId);
@@ -151,7 +166,7 @@ public sealed class LanServer : IAsyncDisposable
                     session.SaveConfig();
 
                     active.Completed.TrySetResult(new PairResult(request.DeviceId, request.Label,
-                        Crypto.Fingerprint(request.PubKey), session.OwnFingerprint));
+                        Crypto.Fingerprint(request.PubKey), session.OwnFingerprint, added.WasRemoved));
 
                     var store = session.SealStore();
                     var responseProof = Convert.ToBase64String(SyncAuth.PairProof(
@@ -166,6 +181,12 @@ public sealed class LanServer : IAsyncDisposable
                         Proof = responseProof,
                     }, Json.Options);
                 }
+            }
+            catch (InvalidOperationException ex)
+            {
+                active.Abort(ex.Message);
+                return Results.Json(new PairResponse { Format = Protocol.Format, Ok = false, Error = ex.Message },
+                    Json.Options, statusCode: StatusCodes.Status409Conflict);
             }
             catch (Exception ex)
             {

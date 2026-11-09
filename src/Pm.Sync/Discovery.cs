@@ -83,7 +83,7 @@ public sealed class PeerDiscovery : IDisposable
                 if (_id.Length == 0 || _port == 0) continue;
                 var reply = JsonSerializer.Serialize(
                     new PeerCandidate(_id, _label, $"{LocalAddress(packet.RemoteEndPoint)}:{_port}", _pairing?.Invoke() ?? false),
-                    Json.Options);
+                    PmSyncJsonContext.Default.PeerCandidate);
                 try
                 {
                     await _udp.SendAsync(Encoding.UTF8.GetBytes("PM1 " + reply), packet.RemoteEndPoint);
@@ -97,7 +97,7 @@ public sealed class PeerDiscovery : IDisposable
             {
                 try
                 {
-                    var peer = JsonSerializer.Deserialize<PeerCandidate>(text[4..], Json.Options);
+                    var peer = JsonSerializer.Deserialize(text[4..], PmSyncJsonContext.Default.PeerCandidate);
                     if (peer is not null) _seen[peer.Id] = peer;
                 }
                 catch

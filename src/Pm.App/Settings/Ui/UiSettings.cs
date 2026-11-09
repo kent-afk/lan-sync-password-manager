@@ -1,11 +1,11 @@
 using System.Globalization;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace Pm.App.Settings.Ui;
 
 public sealed class UiSettings
 {
-    private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
     private static readonly string SystemLanguage = CultureInfo.CurrentUICulture.TwoLetterISOLanguageName;
 
     public string Theme { get; set; } = "system";
@@ -20,7 +20,7 @@ public sealed class UiSettings
         {
             var path = Path.Combine(home, "ui.json");
             if (File.Exists(path))
-                Current = JsonSerializer.Deserialize<UiSettings>(File.ReadAllText(path)) ?? new UiSettings();
+                Current = JsonSerializer.Deserialize(File.ReadAllText(path), UiJsonContext.Default.UiSettings) ?? new UiSettings();
         }
         catch
         {
@@ -41,7 +41,7 @@ public sealed class UiSettings
         Current.Theme = theme;
         try
         {
-            Files.WriteAtomic(Path.Combine(home, "ui.json"), JsonSerializer.SerializeToUtf8Bytes(Current, JsonOptions));
+            Files.WriteAtomic(Path.Combine(home, "ui.json"), JsonSerializer.SerializeToUtf8Bytes(Current, UiJsonContext.Default.UiSettings));
         }
         catch
         {
@@ -75,4 +75,10 @@ public sealed class UiSettings
         Current.Language = language;
         Save(home, Current.Theme);
     }
+}
+
+[JsonSourceGenerationOptions(WriteIndented = true)]
+[JsonSerializable(typeof(UiSettings))]
+internal partial class UiJsonContext : JsonSerializerContext
+{
 }

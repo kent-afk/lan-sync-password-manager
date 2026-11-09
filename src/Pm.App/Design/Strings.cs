@@ -54,7 +54,7 @@ public sealed class Strings
     public string PassphraseCurrent => P("Текущий пароль", "Current passphrase");
     public string PassphraseWarning => P("Забыли пароль — доступ не восстановить.", "If you forget it, access cannot be recovered.");
     public string PassphraseMismatch => P("Пароли не совпадают", "Passphrases do not match");
-    public string PassphraseTooShort => P("От 4 до 30 символов", "4 to 30 characters");
+    public string PassphraseTooShort => P("От 12 до 30 символов", "12 to 30 characters");
     public string PassphraseWrong => P("Неверный пароль", "Wrong passphrase");
     public string PassphraseVaultError(string message) =>
         P($"Пароль верный, но хранилище не открылось: {message}",
@@ -119,6 +119,9 @@ public sealed class Strings
     public string PairCheckWarning =>
         P("Нажмите «Совпадают», только если отпечатки на обоих экранах одинаковые. Иначе отмените сопряжение.",
           "Press Match only if the fingerprints on both screens are the same. Otherwise cancel the pairing.");
+    public string PairRemovedWarning =>
+        P("Это устройство было отозвано. Сопряжение вернёт ему доступ к хранилищу.",
+          "This device was previously removed. Pairing restores its access to the vault.");
     public string PairMatch => P("Совпадают", "Fingerprints match");
     public string PairWaitingConfirm => P("Собеседник ввёл код. Сверьте отпечатки.", "The other device entered the code. Compare fingerprints.");
     public string PairWaitingOther => P("Ожидание подтверждения на втором устройстве...", "Waiting for the other device to confirm...");

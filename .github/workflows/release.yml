@@ -77,9 +77,23 @@ jobs:
             -p:EnableCodeSigning=false \
             -p:CodesignRequireProvisioningProfile=false \
             -o artifacts/ios
+
+          # BuildIpa=false usually leaves the .app in bin/Release/.../ios-arm64,
+          # but -o may copy it to artifacts/ios on some SDK versions.
+          APP=$(find "$PWD/artifacts/ios" -type d -name 'Pm.app' -print -quit 2>/dev/null || true)
+          if [ -z "$APP" ]; then
+            APP=$(find "$PWD/src/Pm.App.iOS/bin/Release" -type d -path '*ios-arm64*' -name 'Pm.app' -print -quit 2>/dev/null || true)
+          fi
+          if [ -z "$APP" ]; then
+            echo "Pm.app not found; publish output:"
+            find artifacts/ios -maxdepth 3 -print 2>/dev/null || true
+            find src/Pm.App.iOS/bin/Release -maxdepth 6 -print 2>/dev/null || true
+            exit 1
+          fi
+
           cd artifacts/ios
           mkdir -p Payload
-          cp -R Pm.app Payload/
+          cp -R "$APP" Payload/
           zip -r ../Pm.ipa Payload
       - uses: actions/upload-artifact@v7
         with:

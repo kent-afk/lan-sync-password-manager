@@ -146,6 +146,36 @@ public static class SelfCheck
                 Assert(merged.Entries.Single().Deleted, "удалённый пароль вернулся после 90 дней");
             });
 
+            Step("надгробие побеждает параллельную правку", () =>
+            {
+                var local = new Vault
+                {
+                    Entries = { new Entry { Id = "1", Version = 2, Device = "a", Deleted = true, DeletedAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() } },
+                };
+                var remote = new Vault
+                {
+                    Entries = { new Entry { Id = "1", Version = 2, Device = "b", Title = "live", Password = "secret" } },
+                };
+                var (merged, _, _) = Merger.Merge(local, remote);
+                Assert(merged.Entries.Count == 1, "создана живая копия удалённого секрета");
+                Assert(merged.Entries[0].Deleted && merged.Entries[0].Password == "", "удаление проиграло правке");
+            });
+
+            Step("надгробие побеждает более новую правку", () =>
+            {
+                var local = new Vault
+                {
+                    Entries = { new Entry { Id = "1", Version = 2, Device = "a", Deleted = true, DeletedAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() } },
+                };
+                var remote = new Vault
+                {
+                    Entries = { new Entry { Id = "1", Version = 3, Device = "b", Title = "live", Password = "secret" } },
+                };
+                var (merged, _, _) = Merger.Merge(local, remote);
+                Assert(merged.Entries.Count == 1 && merged.Entries[0].Deleted,
+                    "более новая правка воскресила удалённую запись");
+            });
+
             Step("одинаковое слияние не считается изменением", () =>
             {
                 var local = new Vault { Entries = { new Entry { Id = "1", Version = 2, Device = "a", Title = "same" } } };
@@ -385,6 +415,12 @@ public static class SelfCheck
                 Assert(b.Keyset.Find(b.Config.DeviceId) is not null, "B не получил обёртку ключа");
             });
 
+            Step("нельзя сопрячь собственный идентификатор", () =>
+                Expect<InvalidOperationException>(() => a.AddDevice(a.Config.DeviceId, "self", b.PublicKey)));
+
+            Step("нельзя подменить ключ существующего устройства", () =>
+                Expect<InvalidOperationException>(() => a.AddDevice(b.Config.DeviceId, "B", c.PublicKey)));
+
             await StepAsync("неверный код сопряжения отвергается", async () =>
             {
                 using var c = VaultSession.Init(Path.Combine(root, "c"), "C", "pass-c");
@@ -510,6 +546,38 @@ public static class SelfCheck
                 Assert(p.Keyset.Find(s.Config.DeviceId) is not null, "P потерял S при равных rev");
                 Assert(q.Keyset.Find(t.Config.DeviceId) is not null, "Q потерял T при равных rev");
                 Assert(p.Keyset.Rev == q.Keyset.Rev, "keyset rev разошлись");
+            });
+
+            await StepAsync("восстановление .prev принимает отозванного подписанта", async () =>
+            {
+                using var r = VaultSession.Init(Path.Combine(root, "recover-r"), "R", "pass-r");
+                using var s = VaultSession.Init(Path.Combine(root, "recover-s"), "S", "pass-s");
+                using var t = VaultSession.Init(Path.Combine(root, "recover-t"), "T", "pass-t");
+
+                var tr = new PairingTicket();
+                await using var rs = await LanServer.StartAsync(r, "127.0.0.1", 0, tr);
+                await PairAsync(s, rs, tr, 47821);
+
+                var ts = new PairingTicket();
+                await using var ss = await LanServer.StartAsync(s, "127.0.0.1", 0, ts);
+                await PairAsync(t, ss, ts, 47821);
+
+                // R adopts S's newer keyset, which S signed when it added T.
+                await SyncClient.SyncAsync(r, ss.Address);
+
+                var keysPath = Path.Combine(r.Home, "keys.bin");
+                var storePath = Path.Combine(r.Home, "store.bin");
+                var prevKeys = File.ReadAllBytes(keysPath);
+                var prevStore = File.ReadAllBytes(storePath);
+
+                Assert(r.RemoveDevice(s.Config.DeviceId), "R не отозвал S");
+                // Simulate a crash after the new keyset was written but before the new store was.
+                File.WriteAllBytes(storePath, prevStore);
+                File.WriteAllBytes(keysPath + ".prev", prevKeys);
+                File.WriteAllBytes(storePath + ".prev", prevStore);
+
+                using var recovered = VaultSession.Unlock(r.Home, "pass-r");
+                Assert(recovered.Vault.Entries.Count == 0, "хранилище не восстановлено");
             });
 
             await StepAsync("отзыв не воскресает из устаревшей ветки", async () =>

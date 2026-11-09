@@ -15,7 +15,7 @@ public static class SyncClient
         using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
 
         // Refuse to exchange stores with a different format before it can overwrite anything.
-        var info = await http.GetFromJsonAsync<InfoResponse>($"http://{address}/info", Json.Options)
+        var info = await http.GetFromJsonAsync<InfoResponse>($"http://{address}/info", PmSyncJsonContext.Default.InfoResponse)
                    ?? throw new InvalidOperationException("устройство не ответило");
         if (info.Format != Protocol.Format)
             throw new InvalidOperationException("версии Pm не совпадают; обновите оба устройства");
@@ -46,14 +46,14 @@ public static class SyncClient
                 KeysetSignature = keysetSignature,
             };
 
-            var response = await http.PostAsJsonAsync($"http://{address}/sync", request, Json.Options);
+            var response = await http.PostAsJsonAsync($"http://{address}/sync", request, PmSyncJsonContext.Default.SyncRequest);
             if (response.StatusCode == System.Net.HttpStatusCode.UpgradeRequired)
                 throw new InvalidOperationException("версии Pm не совпадают; обновите оба устройства");
             if (response.StatusCode == System.Net.HttpStatusCode.BadRequest && HasError(response, Protocol.ClockSkew))
                 throw new InvalidOperationException("часы устройств расходятся больше чем на 5 минут");
             if (response.StatusCode == System.Net.HttpStatusCode.Conflict)
             {
-                var changed = await response.Content.ReadFromJsonAsync<SyncResponse>(Json.Options);
+                var changed = await response.Content.ReadFromJsonAsync(PmSyncJsonContext.Default.SyncResponse);
                 if (changed?.Keyset is null)
                     throw new InvalidOperationException("сервер не прислал новый keys.bin");
 
@@ -69,7 +69,7 @@ public static class SyncClient
             }
 
             response.EnsureSuccessStatusCode();
-            var sync = await response.Content.ReadFromJsonAsync<SyncResponse>(Json.Options)
+            var sync = await response.Content.ReadFromJsonAsync(PmSyncJsonContext.Default.SyncResponse)
                        ?? throw new InvalidOperationException("пустой ответ синхронизации");
             if (sync.Format != Protocol.Format)
                 throw new InvalidOperationException("версии Pm не совпадают; обновите оба устройства");
@@ -95,7 +95,7 @@ public static class SyncClient
     {
         address = Network.NormalizeAddress(address);
         using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
-        var info = await http.GetFromJsonAsync<InfoResponse>($"http://{address}/info", Json.Options)
+        var info = await http.GetFromJsonAsync<InfoResponse>($"http://{address}/info", PmSyncJsonContext.Default.InfoResponse)
                    ?? throw new InvalidOperationException("устройство не ответило");
         if (info.Format != Protocol.Format)
             throw new InvalidOperationException("версии Pm не совпадают; обновите оба устройства");
@@ -124,8 +124,8 @@ public static class SyncClient
             Port = myPort,
         };
 
-        var response = await http.PostAsJsonAsync($"http://{address}/pair", request, Json.Options);
-        var result = await response.Content.ReadFromJsonAsync<PairResponse>(Json.Options)
+        var response = await http.PostAsJsonAsync($"http://{address}/pair", request, PmSyncJsonContext.Default.PairRequest);
+        var result = await response.Content.ReadFromJsonAsync(PmSyncJsonContext.Default.PairResponse)
                      ?? throw new InvalidOperationException("пустой ответ при сопряжении");
 
         if (!result.Ok)

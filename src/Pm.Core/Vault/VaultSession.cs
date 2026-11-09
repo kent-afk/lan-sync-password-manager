@@ -415,17 +415,28 @@ public sealed class VaultSession : IDisposable
         });
 
     /// <summary>Server side of pairing: wrap the vault key for the new device and sign the keyset.</summary>
-    public DeviceInfo AddDevice(string id, string label, byte[] publicKey) =>
+    public AddDeviceResult AddDevice(string id, string label, byte[] publicKey) =>
         WithWriteLock(() =>
         {
+            if (string.IsNullOrWhiteSpace(id))
+                throw new InvalidOperationException("пустой идентификатор устройства");
+            if (id == Config.DeviceId)
+                throw new InvalidOperationException("нельзя сопрячь собственное устройство");
+            if (publicKey.Length == 0)
+                throw new InvalidOperationException("пустой публичный ключ");
+
             ReloadKeysetCore();
-            // Pairing a device is the explicit way to undo its revocation.
-            Keyset.Removed?.Remove(id);
             var existing = Keyset.Find(id);
+            if (existing is not null && !existing.PubKey.AsSpan().SequenceEqual(publicKey))
+                throw new InvalidOperationException(
+                    "устройство с этим идентификатором уже сопряжено с другим ключом; сначала отзовите его");
+
+            // Pairing a device is the explicit way to undo its revocation.
+            var wasRemoved = Keyset.Removed?.Contains(id) == true;
+            Keyset.Removed?.Remove(id);
             if (existing is not null)
             {
                 existing.Label = label;
-                existing.PubKey = publicKey;
                 existing.Wrap = Crypto.Crypto.Wrap(publicKey, VaultKey);
             }
             else
@@ -436,7 +447,7 @@ public sealed class VaultSession : IDisposable
             Keyset.Rev++;
             Keyset.SignWith(Key);
             SaveKeyset();
-            return Keyset.Find(id)!;
+            return new AddDeviceResult(Keyset.Find(id)!, wasRemoved);
         });
 
     /// <summary>Remove a device, rotate the store key, and re-wrap it for the remaining devices.</summary>
@@ -508,7 +519,15 @@ public sealed class VaultSession : IDisposable
         {
             var keyset = Keyset.Load(previousKeys);
             if (!keyset.VerifyAny()) return null;
-            if (!currentKeyset.Devices.Any(d => keyset.VerifyWith(d.PubKey))) return null;
+            // The previous signer may be the device that was just revoked. It is still a known
+            // device if it is in the current keyset or in the monotonic Removed list.
+            var known = currentKeyset.Devices.Select(d => d.PubKey)
+                .Concat((currentKeyset.Removed ?? new List<string>())
+                    .Select(id => keyset.Find(id)?.PubKey)
+                    .OfType<byte[]>())
+                .ToList();
+            known.Add(key.PublicKey);
+            if (!known.Any(p => keyset.VerifyWith(p))) return null;
             var me = keyset.Find(deviceId);
             if (me is null) return null;
 
@@ -539,9 +558,8 @@ public sealed class VaultSession : IDisposable
         var store = Path.Combine(Home, "store.bin");
         if (!File.Exists(keys) || !File.Exists(store)) return;
 
-        File.Copy(keys, keys + ".prev", true);
-        File.Copy(store, store + ".prev", true);
-        Files.MakePrivate(keys + ".prev", store + ".prev");
+        Files.WriteAtomic(keys + ".prev", File.ReadAllBytes(keys), secret: true);
+        Files.WriteAtomic(store + ".prev", File.ReadAllBytes(store), secret: true);
     }
 
     private static void TryDeletePrevious(string home)
@@ -586,3 +604,5 @@ public sealed class VaultSession : IDisposable
         }
     }
 }
+
+public sealed record AddDeviceResult(DeviceInfo Device, bool WasRemoved);

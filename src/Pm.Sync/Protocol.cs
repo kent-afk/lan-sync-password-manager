@@ -48,12 +48,14 @@ public sealed class PairResponse
     public string? Proof { get; set; }
 }
 
-public sealed record PairResult(string DeviceId, string Label, string Fingerprint, string OwnFingerprint = "");
+public sealed record PairResult(string DeviceId, string Label, string Fingerprint, string OwnFingerprint = "",
+    bool WasRemoved = false);
 
 /// <summary>Public pairing data shown to the user before the code proof is sent.</summary>
 public sealed record PairInfo(string DeviceId, string Label, byte[] PubKey, string Fingerprint, string OwnFingerprint);
 
-public sealed record PairPending(string DeviceId, string Label, string Fingerprint, string OwnFingerprint);
+public sealed record PairPending(string DeviceId, string Label, string Fingerprint, string OwnFingerprint,
+    bool WasRemoved = false);
 
 public sealed class SyncRequest
 {
