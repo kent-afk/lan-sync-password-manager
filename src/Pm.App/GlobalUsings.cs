@@ -14,7 +14,7 @@ global using Avalonia.Threading;
 global using Avalonia.VisualTree;
 global using Pm.App.Design;
 global using Pm.Sync.Hosting;
-global using Pm.App.Settings;
+global using Pm.App.Settings.Ui;
 global using Pm.Core;
 global using Pm.Core.Crypto;
 global using Pm.Core.Storage;

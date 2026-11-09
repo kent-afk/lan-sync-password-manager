@@ -2,8 +2,8 @@ using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Themes.Fluent;
 using Pm.App.Design;
-using Pm.App.Settings;
-using Pm.App.Views;
+using Pm.App.Settings.Ui;
+using Pm.App.Views.MainView;
 using Pm.Core.Storage;
 
 namespace Pm.App.iOS;
