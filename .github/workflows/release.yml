@@ -7,10 +7,10 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: '10.0.x'
       - name: selfcheck
@@ -18,83 +18,93 @@ jobs:
 
   linux:
     needs: test
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: '10.0.x'
       - name: build AppImage
-        run: bash scripts/build-linux.sh dist
+        run: bash scripts/build-linux.sh artifacts
       - name: cli smoke
-        run: dist/Pm-x86_64.AppImage --appimage-extract-and-run --help >/dev/null
-      - uses: actions/upload-artifact@v4
+        run: artifacts/Pm-x86_64.AppImage --appimage-extract-and-run --help >/dev/null
+      - uses: actions/upload-artifact@v7
         with:
           name: Pm-linux
-          path: dist/Pm-x86_64.AppImage
+          path: artifacts/Pm-x86_64.AppImage
 
   windows:
     needs: test
-    runs-on: windows-latest
+    runs-on: windows-2022
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: '10.0.x'
       - name: build exe
         shell: bash
-        run: bash scripts/build-windows.sh dist
+        run: bash scripts/build-windows.sh artifacts
       - name: cli smoke
         shell: bash
-        run: dist/Pm.exe --help
-      - uses: actions/upload-artifact@v4
+        run: artifacts/Pm.exe --help
+      - uses: actions/upload-artifact@v7
         with:
           name: Pm-windows
-          path: dist/Pm.exe
+          path: artifacts/Pm.exe
 
   ios:
-    runs-on: macos-14
+    runs-on: macos-15
     # the .ipa is still being stabilised; never block the desktop artifacts on it
     continue-on-error: true
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
         with:
-          dotnet-version: '10.0.x'
+          dotnet-version: '10.0.202'
+      - name: select Xcode 26.3
+        run: sudo xcode-select -s /Applications/Xcode_26.3.app
+      - name: versions
+        run: |
+          dotnet --version
+          xcodebuild -version
       - name: ios workload
-        run: dotnet workload install ios
+        run: dotnet workload install ios --version 10.0.202
       - name: build ipa
         run: |
           dotnet publish src/Pm.App.iOS/Pm.App.iOS.csproj -c Release \
             -f net10.0-ios -p:RuntimeIdentifier=ios-arm64 \
-            -p:BuildIpa=false -p:CodesignKey= -p:CodesignProvision= \
-            -o dist/ios
-          cd dist/ios
+            -p:BuildIpa=false \
+            -p:EnableCodeSigning=false \
+            -p:CodesignRequireProvisioningProfile=false \
+            -o artifacts/ios
+          cd artifacts/ios
           mkdir -p Payload
           cp -R Pm.app Payload/
           zip -r ../Pm.ipa Payload
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: Pm-ios
-          path: dist/Pm.ipa
+          path: artifacts/Pm.ipa
 
   release:
     needs: [linux, windows, ios]
-    if: startsWith(github.ref, 'refs/tags/') && success()
-    runs-on: ubuntu-latest
+    if: always() && startsWith(github.ref, 'refs/tags/') && needs.linux.result == 'success' && needs.windows.result == 'success'
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
-          path: dist
+          path: artifacts
       - name: collect
         run: |
           mkdir -p release
-          cp dist/Pm-linux/Pm-x86_64.AppImage release/ 2>/dev/null || true
-          cp dist/Pm-windows/Pm.exe release/ 2>/dev/null || true
-          cp dist/Pm-ios/Pm.ipa release/ 2>/dev/null || true
-          ls -la release
-      - uses: softprops/action-gh-release@v2
+          cp artifacts/Pm-linux/Pm-x86_64.AppImage release/ 2>/dev/null || true
+          cp artifacts/Pm-windows/Pm.exe release/ 2>/dev/null || true
+          cp artifacts/Pm-ios/Pm.ipa release/ 2>/dev/null || true
+          cd release
+          sha256sum * > SHA256SUMS
+          ls -la
+      - uses: softprops/action-gh-release@v3
         with:
           files: release/*

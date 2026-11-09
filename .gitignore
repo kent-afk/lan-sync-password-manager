@@ -4,7 +4,7 @@ obj/
 .idea/
 *.user
 *.suo
-dist/
+artifacts/
 *.AppImage
 *.ipa
 
