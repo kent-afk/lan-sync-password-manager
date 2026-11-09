@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Pm.App/Pm.App.csproj" />
+    <Project Path="src/Pm.Cli/Pm.Cli.csproj" />
+    <Project Path="src/Pm.Core/Pm.Core.csproj" />
+    <Project Path="src/Pm.Desktop/Pm.Desktop.csproj" />
+    <Project Path="src/Pm.Net/Pm.Net.csproj" />
+    <Project Path="src/Pm.Secrets/Pm.Secrets.csproj" />
+    <Project Path="src/Pm.Sync/Pm.Sync.csproj" />
+  </Folder>
+</Solution>

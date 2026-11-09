@@ -1,0 +1,100 @@
+name: release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: selfcheck
+        run: dotnet run --project src/Pm.Desktop -- selfcheck
+
+  linux:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: build AppImage
+        run: bash scripts/build-linux.sh dist
+      - name: cli smoke
+        run: dist/Pm-x86_64.AppImage --appimage-extract-and-run --help >/dev/null
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Pm-linux
+          path: dist/Pm-x86_64.AppImage
+
+  windows:
+    needs: test
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: build exe
+        shell: bash
+        run: bash scripts/build-windows.sh dist
+      - name: cli smoke
+        shell: bash
+        run: dist/Pm.exe --help
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Pm-windows
+          path: dist/Pm.exe
+
+  ios:
+    runs-on: macos-14
+    # the .ipa is still being stabilised; never block the desktop artifacts on it
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: ios workload
+        run: dotnet workload install ios
+      - name: build ipa
+        run: |
+          dotnet publish src/Pm.App.iOS/Pm.App.iOS.csproj -c Release \
+            -f net10.0-ios -p:RuntimeIdentifier=ios-arm64 \
+            -p:BuildIpa=false -p:CodesignKey= -p:CodesignProvision= \
+            -o dist/ios
+          cd dist/ios
+          mkdir -p Payload
+          cp -R Pm.app Payload/
+          zip -r ../Pm.ipa Payload
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Pm-ios
+          path: dist/Pm.ipa
+
+  release:
+    needs: [linux, windows, ios]
+    if: startsWith(github.ref, 'refs/tags/') && success()
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+      - name: collect
+        run: |
+          mkdir -p release
+          cp dist/Pm-linux/Pm-x86_64.AppImage release/ 2>/dev/null || true
+          cp dist/Pm-windows/Pm.exe release/ 2>/dev/null || true
+          cp dist/Pm-ios/Pm.ipa release/ 2>/dev/null || true
+          ls -la release
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: release/*
